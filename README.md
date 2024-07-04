@@ -35,14 +35,24 @@ class User < ApplicationRecord
   end
   
   schema do
+    # own properties
     prop(:first_name).required.str
     prop(:last_name).required.str
     prop(:email).required.format(:email)
     prop(:full_name).read_only.dependent_on(:first_name, :last_name).str
     prop(:is_active).required.bool
     
-    prop(:company).ref('$/pair_kit/open_rails/models/users/view')
-    prop(:tasks).arr.ref('$/pair_kit/open_rails/models/users/view')
+    # relations 
+    prop(:company).read_only.ref('$/pair_kit/open_rails/models/users/view')
+    prop(:tasks).read_only.arr.ref('$/pair_kit/open_rails/models/users/view')
+    
+    # permissions of fields level
+    prop(:first_name).allow.read(:admin, :self).write(:admin).filter(:admin).sort(:admin)
+    prop(:last_name).allow.read(:admin, :self).write(:admin).filter(:admin).sort(:admin)
+    prop(:email).allow(:admin, :self)
+    prop(:is_active).allow.read(:admin, :self).filter(:admin)
+    prop(:company).allow.read(:admin)
+    prop(:tasks).allow(:tasks, :self)
   end
 end
 ```
@@ -65,20 +75,29 @@ class UsersController < ApplicationController
   openapi_action :create do
     tag :top_security
     
+    allow :admin
+    
     summary 'Create User'
     
     request.ref('$/pair_kit/open_rails/models/users/update_params')
-    response.ref('$/pair_kit/open_rails/models/users/view')
+    
+    response(:created).content.ref('$/pair_kit/open_rails/models/users/view')
+    response(:bad_request).content.ref('#/components/schemas/ErrorModel')
 
     perform { |input| User.create(input) }
   end
   
   openapi_action :update do
     summary 'Update User'
+
+    allow :admin
     
     param(:id).in_path.int
     request.ref('$/pair_kit/open_rails/models/users/update_params')
-    response.ref('$/pair_kit/open_rails/models/users/view')
+    
+    response(:ok).content.ref('$/pair_kit/open_rails/models/users/view')
+    response(:bad_request).content.ref('#/components/schemas/ErrorModel')
+    response(:not_found)
     
     perform { @user.update(input); @user }
   end
@@ -88,10 +107,16 @@ class UsersController < ApplicationController
     
     summary 'Delete user'
 
+    allow :admin
+
     param(:id).in_path.int
+    
+    response(:no_content).content.object.prop(:id).int
+    response(:forbidden).content.object.prop(:message).str
 
     perform do 
-      throw(:forbidden, message: "Can't delete last user in the company") if  @user.company.users.count == 1 
+      throw(:forbidden, { message: "Can't delete last user in the company" }) unless  @user.company.users.count > 1 
+      
       @user.destroy  
     end
   end
@@ -100,8 +125,13 @@ class UsersController < ApplicationController
     tags :admin_only, :top_security, :users, :get
 
     summary 'Get User'
+
+    allow :admin, :self
     
     param(:id).in_path.int
+
+    response(:ok).content.ref('$/pair_kit/open_rails/models/users/view')
+    response(:not_found)
 
     perform { @user }
   end
@@ -111,9 +141,12 @@ class UsersController < ApplicationController
 
     summary 'Index Users'
 
-    param(:json_query).in_path.ref('$/pair_kit/open_rails/models/users/json_query') 
+    allow :admin
 
-    perform { |params| User.json_query(params)_ }
+    param(:jql).in_path.ref('$/pair_kit/open_rails/models/users/json_path')
+    response(:ok).content.arr.items.ref('$/pair_kit/open_rails/models/users/view')
+
+    perform { |params| User.json_path(params[:jql]) }
   end
 end
 ```
@@ -124,13 +157,13 @@ end
   client = PairKit::OpenApi::Client.new('https://pairfincne.com/openapi/v.1.1', 
                                         cert: '~/.ssh/pair_api_cert.pem')
 
-  client.users[23].upate(email: 'test@test.com')
+  client.users[23].update(email: 'test@test.com')
 
   query = <<-JQL
     $[?(@balance_cents > 10000, @status = "active"), 100:200]{id, balance, debtor{email}}
   JQL
 
-  client.companies[1238].case_files[query].lazy.each do |cf|
+  client.companies[1238].case_files[jql: query].lazy.each do |cf|
     puts "id=#{cd.id} email=#{cf.debtor.email}"  
   end
 
