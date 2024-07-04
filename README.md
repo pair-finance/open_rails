@@ -135,3 +135,12 @@ end
   end
 
 ``` 
+
+
+## Other Features
+
+* ACL on operations and fields level 
+* Cashing (almost for free HTTP spec)
+* Support for many media types (like csv, exel) on the library level (without a line custom code)
+* Automatic API client generation (JavaScript, TypoScript, Python) for internal usage and customers 
+* Progressive migration, i.e. classical Rails app can bin converted into open API action by action.
