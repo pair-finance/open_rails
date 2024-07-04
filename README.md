@@ -141,7 +141,7 @@ class UsersController < ApplicationController
 
     allow :admin
 
-    param(:jql).in_path.ref('$/pair_kit/open_rails/models/users/json_path')
+    param(:jql).in_query.ref('$/pair_kit/open_rails/models/users/json_path')
     response(:ok).content.arr.items.ref('$/pair_kit/open_rails/models/users/view')
 
     perform { |params| User.json_path(params[:jql]) }
