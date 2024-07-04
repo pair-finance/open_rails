@@ -91,7 +91,7 @@ class UsersController < ApplicationController
     param(:id).in_path.int
 
     perform do 
-      throw(:forbidden, message: "Can't delete last user in the company") if  @user.last 
+      throw(:forbidden, message: "Can't delete last user in the company") if  @user.company.users.count == 1 
       @user.destroy  
     end
   end
