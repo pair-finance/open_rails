@@ -127,6 +127,7 @@ end
   client.users[23].upate(email: 'test@test.com')
 
   query = '$[?(@balance_cents > 10000, @status = "active"), 100:200]{id, balance, debtor{email}}'
+
   client.company[1238].case_files[].lazy.each do |cf|
     puts "id=#{cd.id} email=#{cf.debtor.email}"  
   end
