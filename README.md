@@ -1,4 +1,24 @@
 # OpenAPI implementation for Ruby On Rails   
+           
+## Usage 
+
+### Gemfile 
+```ruby
+gem 'pair_kit_open_rails'
+```
+
+### Plugins 
+```ruby
+class ApplicationController < ActionController::Base
+  include PairKit::OpenRails::ControllerPlugin
+end
+```
+
+```ruby
+class ApplicationRecord < ActiveRecord
+  include PairKit::OpenRails::ActiveRecordPlugin
+end
+```
 
 
 ## Example 
@@ -101,7 +121,8 @@ end
 
 ### Use Console Client on Your Local Machine 
 ```ruby
-  client = PairKit::OpenApi::Client.new('https://pairfincne.com/openapi/v.1.1', cert: '~/.ssh/pair_api_cert.pem')
+  client = PairKit::OpenApi::Client.new('https://pairfincne.com/openapi/v.1.1', 
+                                        cert: '~/.ssh/pair_api_cert.pem')
 
   client.users[23].upate(email: 'test@test.com')
 
