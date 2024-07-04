@@ -130,7 +130,7 @@ end
     $[?(@balance_cents > 10000, @status = "active"), 100:200]{id, balance, debtor{email}}
   JQL
 
-  client.company[1238].case_files[query].lazy.each do |cf|
+  client.companies[1238].case_files[query].lazy.each do |cf|
     puts "id=#{cd.id} email=#{cf.debtor.email}"  
   end
 
