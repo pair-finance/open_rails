@@ -109,13 +109,15 @@ class UsersController < ApplicationController
 
     param(:id).in_path.int
     
-    response(:no_content).content.object.prop(:id).int
+    response(:no_content)
     response(:forbidden).content.object.prop(:message).str
 
     perform do 
-      throw(:forbidden, { message: "Can't delete last user in the company" }) unless  @user.company.users.count > 1 
+      if @user && @user.company.users.count > 1
+        throw :forbidden, { message: "Can't delete last user in the company" }
+      end
       
-      @user.destroy  
+      @user&.destroy  
     end
   end
   
@@ -141,7 +143,7 @@ class UsersController < ApplicationController
 
     allow :admin
 
-    param(:jql).in_query.ref('$/pair_kit/open_rails/models/users/json_path')
+    param(:jql).in_query.schema.ref('$/pair_kit/open_rails/models/users/json_path')
     response(:ok).content.arr.items.ref('$/pair_kit/open_rails/models/users/view')
 
     perform { |params| User.json_path(params[:jql]) }
