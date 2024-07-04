@@ -66,9 +66,7 @@ end
 class UsersController < ApplicationController
   before_action :authenticate_user!
   
-  before_openapi_action except: :create do |params| 
-    @user = User.find(params[:id])
-  end
+  before_openapi_action(except: %i[create index]) { |params| @user = User.find(params[:id]) }
   
   openapi_tags :admin_only, :users 
   
@@ -99,7 +97,7 @@ class UsersController < ApplicationController
     response(:bad_request).content.ref('#/components/schemas/ErrorModel')
     response(:not_found)
     
-    perform { @user.update(input); @user }
+    perform { |_, input| @user.update(input) }
   end
   
   openapi_action :delete do
