@@ -51,20 +51,20 @@ class User < ApplicationRecord
   schema do
     # own properties
     prop (:id)        .int   .ro                         .r(:admin)
-    prop!(:first_name).str                               .rw(:admin, "user:{id}")
-    prop!(:last_name) .str                               .rw(:admin, "user:{id}")
-    prop!(:email)     .email                             .rw(:admin).r("user:{id}")
-    prop (:full_name) .str   .ro(:first_name, :last_name).r(:admin, "user:{id}")
+    prop!(:first_name).str                               .rw(:admin, :user)
+    prop!(:last_name) .str                               .rw(:admin, :user)
+    prop!(:email)     .email                             .rw(:admin).r(:user)
+    prop (:full_name) .str   .ro(:first_name, :last_name).r(:admin, :user)
     prop (:is_active) .bool  .defaut(true)               .rw(:admin)
     prop (:is_admin)  .bool  .defaut(false)              .rw(:admin)
     prop!(:company_id).int                               .rw(:admin)
     
-    prop!(:password)  .passwd.wo                         .w("user:{id}")
-    prop!(:confirm)   .passwd.wo                         .w("user:{id}")
+    prop!(:password)  .passwd.wo                         .w(:user)
+    prop!(:confirm)   .passwd.wo                         .w(:user)
     
     # relations 
     prop(:company)    .object { ref('company') }.ro      .r(:admin)
-    prop(:tasks)      .arr { items.ref('task') }.ro      .r(:admin, "user:{id}")
+    prop(:tasks)      .arr { items.ref('task') }.ro      .r(:admin, :user)
   end
 end
 ```
@@ -277,5 +277,5 @@ end
 
 ## TODO
 * Floating input/output schema dependent on params(do we need it? oneOf solution maybe)
-* In the same situation user which belongs to company 10 has to be able only create orders for company 10
-  * Maybe check in the implementatoion body 
+* What if I create some sub-graph of data (like order->items), how to orchanize dynamic validation in the context?
+* 
