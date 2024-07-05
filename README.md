@@ -113,11 +113,12 @@ class Order < ApplicationRecord
   
   schema do
     # own properties
-    prop (:id)          .int.ro                       .r(:admin, :user)
-    prop!(:date)        .date                         .rw(:admin, :user)
-    prop!(:amount_cents).int                          .rw(:admin, :user)
+    prop (:id)          .int.ro                         .r(:admin, :user)
+    prop!(:date)        .date.ro                        .r(:admin, :user)
+    prop!(:amount_cents).int                            .rw(:admin, :user)
+    prop!(:status)      .enum(:new, :processing, :done) .rw(:admin, :user)
 
-    prop(:company)      .object { ref(:company) }.ro  .r(:admin)
+    prop(:company)      .object { ref(:company) }.ro    .r(:admin)
   end
 end
 ```
@@ -132,18 +133,14 @@ class UsersController < ApplicationController
   before_openapi_action { @users ||= security_scope(User) }
   before_openapi_action(except: %i[create index]) { |params| @user ||= @users.find(params[:id]) }
   
-  openapi_tags :admin_only, :users 
+  openapi_tags :users 
   
   openapi_action :create do
-    tag :top_security
-    
-    allow :admin
-    
     summary 'Create User'
+
+    request.content.content.dynamic_ref('#/components/schemas/models/users:create;security_scope={security_scope}')
     
-    request.ref('$/pair_kit/open_rails/models/users/update_params')
-    
-    response(:created).content.ref('#/components/schemas/models/users:create;security_scope={security_scope}')
+    response(:created).content.ref('#/components/schemas/models/users:read;security_scope={security_scope}')
     response(:bad_request).content.ref('#/components/schemas/ErrorModel')
 
     perform { |input| @users.create(input) }
@@ -151,13 +148,13 @@ class UsersController < ApplicationController
   
   openapi_action :update do
     summary 'Update User'
-
-    allow :admin
+    
+    security_scope :admin, :user
     
     param(:id).in_path.int
-    request.ref('$/pair_kit/open_rails/models/users/update_params')
+    request.content.content.dynamic_ref('#/components/schemas/models/users:update;security_scope={security_scope}')
     
-    response(:ok).content.dynamic_ref('#/components/schemas/models/users:update;security_scope={security_scope}')
+    response(:ok).content.dynamic_ref('#/components/schemas/models/users:read;security_scope={security_scope}')
     response(:bad_request).content.ref('#/components/schemas/ErrorModel')
     response(:not_found)
     
@@ -165,8 +162,6 @@ class UsersController < ApplicationController
   end
   
   openapi_action :delete do
-    tag :top_security
-    
     summary 'Delete user'
 
     security_scope :admin
@@ -186,8 +181,6 @@ class UsersController < ApplicationController
   end
   
   openapi_action :show do
-    tags :admin_only, :top_security, :users, :get
-
     summary 'Get User'
 
     security_scope :admin, :user
@@ -201,8 +194,6 @@ class UsersController < ApplicationController
   end
 
   openapi_action :index do
-    tags :admin_only, :top_security, :users, :index
-
     summary 'Index Users'
 
     security_scope :admin
@@ -225,15 +216,27 @@ end
   client.users[23].update(email: 'test@test.com')
 
   query = <<-JQL
-    $[?(@balance_cents > 10000, @status = "active"), 100:200]{id, balance, debtor{email}}
+    $[?(@amount_cents > 10000, @status = "new"), ^(@amount_cents-, @debtor.last_name+), 100:200]
+      {id, amount_cents, debtor{last_name, email}}
   JQL
 
-  client.companies[1238].case_files[jql: query].lazy.each do |cf|
+  client.companies[1238].orders[jql: query].lazy.each do |cf|
     puts "id=#{cd.id} email=#{cf.debtor.email}"  
   end
 
-``` 
+```
 
+```ruby
+class OrderController < Create
+  before_openapi_action(only: :create) do |params|
+    # @company = security_scope(Company).find(security_scoup?(:admin) ? params[:id] : )
+    # company_scope  = security_scope(Company)
+    # @company = security_scoup?(:admin) ? compnay_scope.find(params[:id]) : company_scope.take 
+    # throw(:bad_request,  { company_id: :invalid }) unless @company   
+    
+  end
+end
+```
 
 ## Other Features
 
@@ -242,3 +245,12 @@ end
 * Support for many media types (like csv, exel) on the library level (without a line custom code)
 * Automatic API client generation (JavaScript, TypoScript, Python) for internal usage and customers 
 * Progressive migration, i.e. classical Rails app can bin converted into open API action by action.
+
+## TODO
+* Floating input/output schema dependent on params 
+* Floating input/output schema dependent on security scope (see next case for the context)
+* If has to be possible to pass some param as param or as part of request body. For instance
+  * POST /orders  { company_id: 10, ...}
+  * POST /companies/10/orders { ... }
+* In the same situation user which belongs to company 10 has to be able only create orders for company 10
+  * Maybe check in the implementatoion body 
