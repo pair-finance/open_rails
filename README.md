@@ -78,8 +78,8 @@ class Company < ApplicationRecord
   
   schema do
     # own properties
-    prop (:id)  .int   .ro  .r(:admin)
-    prop!(:name).str        .rw(:admin).r(:user)
+    prop (:id)  .pk .r(:admin)
+    prop!(:name).str.rw(:admin).r(:user)
   end
 end
 ```
@@ -94,15 +94,13 @@ class Task < ApplicationRecord
   
   schema do
     # own properties
-    prop (:id)      .int.ro                    .r(:admin, :user)
-    prop!(:name)    .str                       .rw(:admin, :user)
-    prop!(:due_date).date                      .rw(:admin, :user)
-    
-    prop(:user)     .object { ref(:user) }.ro  .r(:admin)
+    prop (:id)      .pk                      .r(:admin, :user)
+    prop!(:name)    .str                     .rw(:admin, :user)
+    prop!(:due_date).date                    .rw(:admin, :user)
+    prop(:user)     .object { ref(:user) }.ro.r(:admin)
   end
 end
 ```
-
 
 ```ruby
 class Order < ApplicationRecord
@@ -110,48 +108,26 @@ class Order < ApplicationRecord
   
   security_scope('user:{id}') { |id| where(company_id: User.find(id).company_id) } # filter by user
   security_scope(:admin) # full access
-
-  # the dynamic_enum can be used by fron and back end both for validation 
-  # plus frontend can use it for preview 
-  # this hast to work like this in Json Chema
-  # ...
-  # properties: {
-  #    ...
-  #    companyId: {
-  #       type: 'integer',
-  #       x-dynamic-enum: {
-  #         optionsUrl: '//companies?jql=$[][id, name]',
-  #         validationUrl: '//companies/{val}',   => 200 means validation passt 
-  #         optionsKey: 'id'
-  #       }
-  #    }
-  # }
-  # Only applicable for writing for the admin        
   
+  STATES = %i[new processing done]
   schema do
     # own properties
-    prop (:id)          .int.ro                         .r(:admin, :user)
-    prop!(:date)        .date.ro                        .r(:admin, :user)
-    prop!(:amount_cents).int                            .rw(:admin, :user)
-    prop!(:status)      .enum(:new, :processing, :done) .rw(:admin, :user)
-    prop!(:company_id)                                  .rw(:admin).r(:user)
-                        .int { dynamic_enum(options_key: 'id', 
-                                            options: '//companies?jql=$[][id, name]',
-                                            validate: '/companies/{val}') }
-
-    prop(:company)      .object { ref(:company) }.ro    .r(:admin)
+    prop (:id)          .pk                         .r(:admin, :user)
+    prop!(:date)        .date                    .ro.r(:admin, :user)
+    prop!(:amount_cents).int { gt(0) }              .rw(:admin, :user)
+    prop!(:status)      .enum(*STATES)              .rw(:admin, :user)
+    prop!(:company_id)  .fk                         .rw(:admin).r(:user)
+    prop (:company)     .object { ref(:company) }.ro.r(:admin)
   end
 end
 ```
-
-
 
 ### Define Controller 
 
 ```ruby
 
 class UsersController < ApplicationController
-  before_openapi_action{ @users ||= security_scope(User) }
+  before_openapi_action{ @users ||= security_scoped(User) }
   before_openapi_action(except: %i[create index]) { |params| @user ||= @users.find(params[:id]) }
   
   openapi_tags :users 
@@ -249,7 +225,7 @@ end
 
 ```ruby
 class OrderController < Create
-  before_openapi_action { @orders ||= security_scope(Order) }
+  before_openapi_action { @orders ||= security_scoped(Order) }
   before_openapi_action(except: %i[create index]) { |params| @order ||= @orders.find(params[:id]) }
 
   
@@ -262,7 +238,7 @@ class OrderController < Create
     request.content.ref('#/components/schemas/models/orders:create;security_scope={security_scope}')
     security_scope :admin, :user
     
-    perform { @orders.create(input) } 
+    perform { |input| @orders.create(input) } 
   end
 end
 ```
@@ -276,6 +252,9 @@ end
 * Progressive migration, i.e. classical Rails app can bin converted into open API action by action.
 
 ## TODO
-* Floating input/output schema dependent on params(do we need it? oneOf solution maybe)
+* Floating input/output schema dependent on params 
+  (we need this for conditions like "max number of days depedent on the company")
 * What if I create some sub-graph of data (like order->items), how to orchanize dynamic validation in the context?
-* 
+  For instance if I create an order how do I validate that should not be more then 5 open orders per company?
+  Obviously this business logic validation goes to the performer.
+
