@@ -135,7 +135,7 @@ class Order < ApplicationRecord
     prop!(:amount_cents).int                            .rw(:admin, :user)
     prop!(:status)      .enum(:new, :processing, :done) .rw(:admin, :user)
     prop!(:company_id)                                  .rw(:admin).r(:user)
-                        .int { dynamic_enum(options_key: id, 
+                        .int { dynamic_enum(options_key: 'id', 
                                             options: '//companies?jql=$[][id, name]',
                                             validate: '/companies/{val}') }
 
