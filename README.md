@@ -11,12 +11,23 @@ gem 'pair_kit_open_rails'
 ```ruby
 class ApplicationController < ActionController::Base
   include PairKit::OpenRails::ControllerPlugin
+  include PairKit::ActiveScope::Controller
+  
+  before_action :authenticate_user!    # use classical Rails Device
+  before_action :grant_security_scope!
+  
+  def grant_security_scope!
+    if @current_user.is_active
+      @security_scope = ["user:#{@current_user.id}", @current_user.is_admin ? 'admin' : 'user']
+    end
+  end
 end
 ```
 
 ```ruby
 class ApplicationRecord < ActiveRecord
-  include PairKit::OpenRails::ActiveRecordPlugin
+  include PairKit::ActiveJson::Record
+  include PairKit::ActiveScope::Record
 end
 ```
 
@@ -34,25 +45,79 @@ class User < ApplicationRecord
     "#{first_name} #{last_name}"  
   end
   
+  security_scope('user:{id}') { |id| where(id: id) } # filter by user
+  security_scope(:admin) # full access
+  
   schema do
     # own properties
-    prop(:first_name).required.str
-    prop(:last_name).required.str
-    prop(:email).required.format(:email)
-    prop(:full_name).read_only.dependent_on(:first_name, :last_name).str
-    prop(:is_active).required.bool
+    prop (:id)        .int   .ro                         .r(:admin)
+    prop!(:first_name).str                               .rw(:admin, "user:{id}")
+    prop!(:last_name) .str                               .rw(:admin, "user:{id}")
+    prop!(:email)     .email                             .rw(:admin).r("user:{id}")
+    prop (:full_name) .str   .ro(:first_name, :last_name).r(:admin, "user:{id}")
+    prop (:is_active) .bool  .defaut(true)               .rw(:admin)
+    prop (:is_admin)  .bool  .defaut(false)              .rw(:admin)
+    prop!(:company_id).bool  .defaut(false)              .rw(:admin)
+    
+    prop!(:password)  .passwd.wo                         .w("user:{id}")
+    prop!(:confirm)   .passwd.wo                         .w("user:{id}")
     
     # relations 
-    prop(:company).read_only.ref('$/pair_kit/open_rails/models/users/view')
-    prop(:tasks).read_only.arr.ref('$/pair_kit/open_rails/models/users/view')
+    prop(:company)    .object { ref('company') }.ro      .r(:admin)
+    prop(:tasks)      .arr { items.ref('task') }.ro      .r(:admin, "user:{id}")
+  end
+end
+```
+
+```ruby
+class Company < ApplicationRecord
+  has_many :users
+  
+  security_scope('user:{id}') { |id| where(id: User.find(id).company_id) } # filter by user
+  security_scope(:admin) # full access
+  
+  schema do
+    # own properties
+    prop (:id)  .int   .ro  .r(:admin)
+    prop!(:name).str        .rw(:admin).r(:user)
+  end
+end
+```
+
+
+```ruby
+class Task < ApplicationRecord
+  belongs_to :user
+  
+  security_scope('user:{id}') { |id| where(user_id: id) } # filter by user
+  security_scope(:admin) # full access
+  
+  schema do
+    # own properties
+    prop (:id)      .int.ro                    .r(:admin, :user)
+    prop!(:name)    .str                       .rw(:admin, :user)
+    prop!(:due_date).date                      .rw(:admin, :user)
     
-    # permissions of fields level
-    prop(:first_name).allow.read(:admin, :self).write(:admin).filter(:admin).sort(:admin)
-    prop(:last_name).allow.read(:admin, :self).write(:admin).filter(:admin).sort(:admin)
-    prop(:email).allow(:admin, :self)
-    prop(:is_active).allow.read(:admin, :self).filter(:admin)
-    prop(:company).allow.read(:admin)
-    prop(:tasks).allow(:tasks, :self)
+    prop(:user)     .object { ref(:user) }.ro  .r(:admin)
+  end
+end
+```
+
+
+```ruby
+class Order < ApplicationRecord
+  belongs_to :company
+  
+  security_scope('user:{id}') { |id| where(company_id: User.find(id).company_id) } # filter by user
+  security_scope(:admin) # full access
+  
+  schema do
+    # own properties
+    prop (:id)          .int.ro                       .r(:admin, :user)
+    prop!(:date)        .date                         .rw(:admin, :user)
+    prop!(:amount_cents).int                          .rw(:admin, :user)
+
+    prop(:company)      .object { ref(:company) }.ro  .r(:admin)
   end
 end
 ```
@@ -64,9 +129,8 @@ end
 ```ruby
 
 class UsersController < ApplicationController
-  before_action :authenticate_user!
-  
-  before_openapi_action(except: %i[create index]) { |params| @user = User.find(params[:id]) }
+  before_openapi_action { @users ||= security_scope(User) }
+  before_openapi_action(except: %i[create index]) { |params| @user ||= @users.find(params[:id]) }
   
   openapi_tags :admin_only, :users 
   
@@ -79,10 +143,10 @@ class UsersController < ApplicationController
     
     request.ref('$/pair_kit/open_rails/models/users/update_params')
     
-    response(:created).content.ref('$/pair_kit/open_rails/models/users/view')
+    response(:created).content.ref('#/components/schemas/models/users:create;security_scope={security_scope}')
     response(:bad_request).content.ref('#/components/schemas/ErrorModel')
 
-    perform { |input| User.create(input) }
+    perform { |input| @users.create(input) }
   end
   
   openapi_action :update do
@@ -93,7 +157,7 @@ class UsersController < ApplicationController
     param(:id).in_path.int
     request.ref('$/pair_kit/open_rails/models/users/update_params')
     
-    response(:ok).content.ref('$/pair_kit/open_rails/models/users/view')
+    response(:ok).content.dynamic_ref('#/components/schemas/models/users:update;security_scope={security_scope}')
     response(:bad_request).content.ref('#/components/schemas/ErrorModel')
     response(:not_found)
     
@@ -105,7 +169,7 @@ class UsersController < ApplicationController
     
     summary 'Delete user'
 
-    allow :admin
+    security_scope :admin
 
     param(:id).in_path.int
     
@@ -126,11 +190,11 @@ class UsersController < ApplicationController
 
     summary 'Get User'
 
-    allow :admin, :self
+    security_scope :admin, :user
     
     param(:id).in_path.int
 
-    response(:ok).content.ref('$/pair_kit/open_rails/models/users/view')
+    response(:ok).content.ref('#/components/schemas/models/users:create;scope={security_scope}')
     response(:not_found)
 
     perform { @user }
@@ -141,12 +205,13 @@ class UsersController < ApplicationController
 
     summary 'Index Users'
 
-    allow :admin
+    security_scope :admin
 
-    param(:jql).in_query.schema.ref('$/pair_kit/open_rails/models/users/json_path')
-    response(:ok).content.arr.items.ref('$/pair_kit/open_rails/models/users/view')
+    param(:jql).in_query.schema.ref('#/components/schemas/models/users:jql;scope={security_scope}')
+    
+    response(:ok).content.arr.items.ref('#/components/schemas/models/users:show;scope={security_scope}')
 
-    perform { |params| User.json_path(params[:jql]) }
+    perform { |params| @users.json_path(params[:jql]) }
   end
 end
 ```
