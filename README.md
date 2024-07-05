@@ -57,7 +57,7 @@ class User < ApplicationRecord
     prop (:full_name) .str   .ro(:first_name, :last_name).r(:admin, "user:{id}")
     prop (:is_active) .bool  .defaut(true)               .rw(:admin)
     prop (:is_admin)  .bool  .defaut(false)              .rw(:admin)
-    prop!(:company_id).bool  .defaut(false)              .rw(:admin)
+    prop!(:company_id).int                               .rw(:admin)
     
     prop!(:password)  .passwd.wo                         .w("user:{id}")
     prop!(:confirm)   .passwd.wo                         .w("user:{id}")
