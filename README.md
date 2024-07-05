@@ -110,6 +110,23 @@ class Order < ApplicationRecord
   
   security_scope('user:{id}') { |id| where(company_id: User.find(id).company_id) } # filter by user
   security_scope(:admin) # full access
+
+  # the dynamic_enum can be used by fron and back end both for validation 
+  # plus frontend can use it for preview 
+  # this hast to work like this in Json Chema
+  # ...
+  # properties: {
+  #    ...
+  #    companyId: {
+  #       type: 'integer',
+  #       x-dynamic-enum: {
+  #         optionsUrl: '//companies?jql=$[][id, name]',
+  #         validationUrl: '//companies/{val}',   => 200 means validation passt 
+  #         optionsKey: 'id'
+  #       }
+  #    }
+  # }
+  # Only applicable for writing for the admin        
   
   schema do
     # own properties
@@ -117,6 +134,10 @@ class Order < ApplicationRecord
     prop!(:date)        .date.ro                        .r(:admin, :user)
     prop!(:amount_cents).int                            .rw(:admin, :user)
     prop!(:status)      .enum(:new, :processing, :done) .rw(:admin, :user)
+    prop!(:company_id)                                  .rw(:admin).r(:user)
+                        .int { dynamic_enum(options_key: id, 
+                                            options: '//companies?jql=$[][id, name]',
+                                            validate: '/companies/{val}') }
 
     prop(:company)      .object { ref(:company) }.ro    .r(:admin)
   end
@@ -228,12 +249,19 @@ end
 
 ```ruby
 class OrderController < Create
-  before_openapi_action(only: :create) do |params|
-    # @company = security_scope(Company).find(security_scoup?(:admin) ? params[:id] : )
-    # company_scope  = security_scope(Company)
-    # @company = security_scoup?(:admin) ? compnay_scope.find(params[:id]) : company_scope.take 
-    # throw(:bad_request,  { company_id: :invalid }) unless @company   
+  openapi_action :create do
+    summary 'Create Order'
     
+    response(:created).content.ref('#/components/schemas/models/users:read;security_scope={security_scope}')
+    response(:bad_request).content.ref('#/components/schemas/ErrorModel')
+
+    request.content.ref('#/components/schemas/models/orders:create;security_scope={security_scope}')
+    security_scope :admin, :user
+    
+    perform do |input|
+      input[:company_id] = @current_user.id if security_scoup?(:user) 
+      @orders.create(input)
+    end
   end
 end
 ```
@@ -247,10 +275,6 @@ end
 * Progressive migration, i.e. classical Rails app can bin converted into open API action by action.
 
 ## TODO
-* Floating input/output schema dependent on params 
-* Floating input/output schema dependent on security scope (see next case for the context)
-* If has to be possible to pass some param as param or as part of request body. For instance
-  * POST /orders  { company_id: 10, ...}
-  * POST /companies/10/orders { ... }
+* Floating input/output schema dependent on params(do we need it? oneOf solution maybe)
 * In the same situation user which belongs to company 10 has to be able only create orders for company 10
   * Maybe check in the implementatoion body 
