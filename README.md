@@ -151,7 +151,7 @@ end
 ```ruby
 
 class UsersController < ApplicationController
-  before_openapi_action { @users ||= security_scope(User) }
+  before_openapi_action{ @users ||= security_scope(User) }
   before_openapi_action(except: %i[create index]) { |params| @user ||= @users.find(params[:id]) }
   
   openapi_tags :users 
@@ -249,6 +249,10 @@ end
 
 ```ruby
 class OrderController < Create
+  before_openapi_action { @orders ||= security_scope(Order) }
+  before_openapi_action(except: %i[create index]) { |params| @order ||= @orders.find(params[:id]) }
+
+  
   openapi_action :create do
     summary 'Create Order'
     
@@ -258,10 +262,7 @@ class OrderController < Create
     request.content.ref('#/components/schemas/models/orders:create;security_scope={security_scope}')
     security_scope :admin, :user
     
-    perform do |input|
-      input[:company_id] = @current_user.id if security_scoup?(:user) 
-      @orders.create(input)
-    end
+    perform { @orders.create(input) } 
   end
 end
 ```
